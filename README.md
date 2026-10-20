@@ -11,7 +11,7 @@ Modbus TCP·OPC UA·로봇 브리지·아두이노 센서를 연결해 수집하
 3. `StartMES.cmd`: 설비·품목·작업지시·LOT·검사 판정을 관리합니다.
 4. `StartPOP.cmd`: 작업지시 조회·작업 시작/정지/재개·실적·완료를 입력합니다.
 
-빠른 체험은 Learning Studio의 **예제 실습 데이터 → 제조 AI 실습 → 정상 기준선 학습·평가**입니다. 실제 수집과 구분한 가상 LOT 5개·센서 150개를 사용합니다. [실습 교안과 연결 방법](learning/README.md).
+빠른 체험은 **예제 선택 → 예제 데이터 만들기 → 시계열 트렌드 → 제조 AI 실습**입니다. 품질 이상·드리프트·에너지·데이터 품질 예제와 병목 What-if·근거 검색까지 6개 주제로 실습합니다. 이동평균·학습 기준선·평가 구간을 비교하고 σ 배수를 조절해 오탐/미탐 변화를 볼 수 있습니다. [예제별 실습 교안](learning/LESSONS.md) · [MES/POP 연결 방법](learning/README.md).
 
 MES·POP는 `data/learning.sqlite3`를 공유하고, 수집기의 `data/manufacturing.sqlite3`에는 쓰지 않습니다. 같은 PC에서 앱 간 역할을 나누는 학습 버전이며, 다중 사용자용 MES 서버나 로봇 제어 시스템은 아닙니다.
 

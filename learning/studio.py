@@ -18,11 +18,12 @@ class Studio(Window):
         super().__init__('OpenSignal Learning Studio · 연결하며 배우는 제조 AI',path)
         self.catalog_data=None;self.busy=False;self.mail=queue.SimpleQueue();self.drag=None;self.pending=None;self.selected_edge=None;self.selected_node=None
         bar=ttk.Frame(self.root);bar.pack(fill='x')
-        for title,action in [('MES 열기',lambda:self.launch('mes')),('POP 열기',lambda:self.launch('pop')),('예제 실습 데이터',self.seed),('배치 저장',self.save_layout),('배치 불러오기',self.load_layout)]:ttk.Button(bar,text=title,command=lambda a=action:self.safe(a)).pack(side='left',padx=3)
+        for title,action in [('MES 열기',lambda:self.launch('mes')),('POP 열기',lambda:self.launch('pop')),('예제 선택',self.open_examples),('배치 저장',self.save_layout),('배치 불러오기',self.load_layout)]:ttk.Button(bar,text=title,command=lambda a=action:self.safe(a)).pack(side='left',padx=3)
         self.status=tk.StringVar(value='1. 수집기에서 API 시작 → 2. 연결 확인 → 3. 블록 배치·연결 → 4. 장치 매핑 → 5. 동기화')
         ttk.Label(self.root,textvariable=self.status,foreground='#235a72',wraplength=1000).pack(anchor='w',pady=9)
         tabs=ttk.Notebook(self.root);tabs.pack(fill='both',expand=True)
         layout,connection,ai,guide=[ttk.Frame(tabs,padding=10) for _ in range(4)]
+        self.tabs=tabs;self.ai_page=ai
         for page,title in [(layout,'공장 배치·연결'),(connection,'수집기·장치 매핑'),(ai,'제조 AI 실습'),(guide,'실습 안내')]:tabs.add(page,text=' '+title+' ')
         controls=ttk.Frame(layout);controls.pack(fill='x')
         for title,action in [('블록 추가',self.node_form),('블록 수정',self.edit_node),('기본 블록 놓기',self.template),('선택 연결 해제',self.disconnect)]:ttk.Button(controls,text=title,command=lambda a=action:self.safe(a)).pack(side='left',padx=3)
@@ -47,6 +48,7 @@ class Studio(Window):
         self.feature=tk.StringVar();self.feature_box=ttk.Combobox(ai,textvariable=self.feature,state='readonly',width=80);self.feature_box.pack(anchor='w',pady=8)
         aibar=ttk.Frame(ai);aibar.pack(fill='x')
         for title,action in [('센서 목록 갱신',self.refresh_features),('정상 기준선 학습·평가',self.learn),('MES 연결 학습 CSV 저장',self.export_training)]:ttk.Button(aibar,text=title,command=lambda a=action:self.safe(a)).pack(side='left',padx=4,pady=8)
+        ttk.Label(aibar,text='기준선 배수 σ').pack(side='left',padx=(15,4));self.sigma=tk.StringVar(value='3');ttk.Entry(aibar,textvariable=self.sigma,width=5).pack(side='left')
         self.result=tk.Text(ai,height=18,font=('맑은 고딕',11),wrap='word',state='disabled');self.result.pack(fill='both',expand=True,pady=10)
         ttk.Label(ai,text='판정은 LOT 전체에 붙인 교육용 정답입니다. 단일 센서 3σ 기준선은 고장 예측·예지보전 모델이 아닙니다.').pack(anchor='w')
         guide_text='''실습 순서
@@ -59,18 +61,21 @@ class Studio(Window):
 6. MES: 확인한 작업/LOT에 normal/defect/unknown 판정을 붙입니다.
 7. AI: 센서를 선택해 학습·평가합니다. 앞 70% 작업의 normal 표본만 학습하고 뒤 작업을 평가합니다. 작업이 학습/평가에 동시에 들어가지 않습니다.
 
-빠른 체험: 예제 실습 데이터를 누르면 가상 LOT 5개와 센서 데이터가 별도로 생성됩니다. 실제 수집 데이터와 synthetic-learning 이름으로 구분됩니다.
+빠른 체험: 예제 선택에서 품질 이상·드리프트·에너지·데이터 품질 데이터를 생성하세요. 시계열 트렌드에서 확인한 뒤 학습 배수(σ)를 바꾸어 오탐/미탐을 비교합니다. 트윈·근거 검색 탭에는 병목 공정과 검색 근거 실습도 있습니다.
 
 학습할 내용: 센서 수치만으로 생산 실적이 되지는 않습니다. 설비 매핑·시각·LOT·품질·판정이 연결되어야 학습 데이터를 만들 수 있습니다. 원본 수집 DB에는 쓰지 않습니다.
 
 배치 파일에는 블록·선·기준정보·장치 매핑만 저장합니다. 측정 데이터·실적·학습 결과는 포함하지 않습니다. 불러오기는 기존 내용을 지우지 않고 추가합니다.'''
         text=tk.Text(guide,wrap='word',font=('맑은 고딕',11));text.pack(fill='both',expand=True);text.insert('1.0',guide_text);text.configure(state='disabled')
+        from .lessons_ui import LessonsUI
+        self.lessons=LessonsUI(self,tabs)
         self.refresh_layout();self.refresh_mappings();self.refresh_features();self.after(200,self.poll)
 
     def launch(self,module):
         import os
         env=os.environ.copy();env['OPENSIGNAL_LEARNING_DB']=str(self.db.path)
         subprocess.Popen([sys.executable,'-m','learning.'+module],cwd=ROOT,env=env)
+    def open_examples(self):self.tabs.select(self.lessons.examples_page)
     def reset_pending(self):self.pending=None
     def node_form(self):
         def save(v):self.db.node(v['name'],ROLES[v['role']],v['asset']);self.refresh_layout()
@@ -169,11 +174,13 @@ class Studio(Window):
         self.features={f"{r['signal_name']} / {r['asset_code']} / {r['unit']} / {r['dataset'][:18]} / {r['signal_id']}":(r['dataset'],r['signal_id'],r['asset_code']) for r in rows}
         self.feature_box.configure(values=list(self.features))
         if self.feature.get() not in self.features:self.feature.set(next(iter(self.features),''))
+        if hasattr(self,'lessons'):self.lessons.refresh()
     def learn(self):
         if self.feature.get() not in self.features:raise ValueError('센서를 선택하세요.')
-        result=self.db.learn(*self.features[self.feature.get()]);p=result['parameters'];m=result['metrics']
+        result=self.db.learn(*self.features[self.feature.get()],sigma_factor=float(self.sigma.get()));p=result['parameters'];m=result['metrics']
         text=f"정상 기준선: 평균 {p['mean']:.4f} {p['unit']} / 표준편차 {p['std']:.4f}\n이상 기준: 평균에서 ±{p['threshold']:.4f} 초과\n\n학습 작업 ID: {m['train_jobs']}\n평가 작업 ID: {m['test_jobs']}\n학습 {m['train_samples']}개 / 평가 {m['test_samples']}개\n\n불량 감지(TP): {m['tp']}\n정상 통과(TN): {m['tn']}\n정상 오탐(FP): {m['fp']}\n불량 미탐(FN): {m['fn']}\n평가 판정 미등록: {m['unlabeled']}\n\n학습·평가 작업은 겹치지 않습니다. 품질 good만 사용합니다.\nLOT 판정은 개별 센서 시점의 정밀 정답을 보증하지 않습니다."
         self.result.configure(state='normal');self.result.delete('1.0','end');self.result.insert('1.0',text);self.result.configure(state='disabled')
+        self.lessons.evaluated(result)
     def export_training(self):
         path=filedialog.asksaveasfilename(defaultextension='.csv',initialfile='mes-pop-training.csv')
         if path:messagebox.showinfo('학습 데이터',f'{self.db.export_training(path):,}행 저장')

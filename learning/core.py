@@ -172,15 +172,16 @@ class LabDB:
         return self.query('''SELECT s.*,j.id job_id,j.code work_order,j.lot,j.item_code,j.result_label,j.started_utc job_start
           FROM samples s LEFT JOIN jobs j ON j.asset_code=s.asset_code AND j.started_utc<=s.source_utc
           AND (j.ended_utc IS NULL OR j.ended_utc>s.source_utc) ORDER BY s.source_utc,s.sample_id''')
-    def export_training(self,path):
-        rows=self.training_rows()
+    def export_training(self,path,dataset=None):
+        rows=[r for r in self.training_rows() if dataset is None or r['dataset']==dataset]
         if not rows:raise ValueError('연결·동기화한 센서 데이터가 없습니다.')
         columns=list(rows[0])
         with open(path,'w',encoding='utf-8-sig',newline='') as file:
             writer=csv.writer(file);writer.writerow(columns)
             for row in rows:writer.writerow([("'"+v if isinstance(v,str) and v.startswith(('=','+','-','@')) else v) for v in row.values()])
         return len(rows)
-    def learn(self,dataset,signal_id,asset=None):
+    def learn(self,dataset,signal_id,asset=None,sigma_factor=3):
+        if not isinstance(sigma_factor,(int,float)) or not math.isfinite(sigma_factor) or not .5<=sigma_factor<=6:raise ValueError('민감도 배수는 0.5~6σ입니다.')
         rows=[r for r in self.training_rows() if r['dataset']==dataset and r['signal_id']==signal_id and (asset is None or r['asset_code']==asset) and r['job_id'] is not None and r['quality']=='good' and r['value'] is not None]
         jobs=sorted({(r['job_start'],r['job_id']) for r in rows})
         if len(jobs)<2:raise ValueError('서로 다른 작업/LOT 2개 이상이 필요합니다. 앞 구간 작업을 normal로 판정하세요.')
@@ -191,14 +192,14 @@ class LabDB:
         units={r['unit'] for r in train+test}
         if len(units)!=1:raise ValueError('단위가 다른 데이터는 한 모델에서 학습할 수 없습니다.')
         mean=statistics.mean(r['value'] for r in train);std=statistics.pstdev(r['value'] for r in train)
-        threshold=max(3*std,abs(mean)*.001,1e-6)
+        threshold=max(sigma_factor*std,abs(mean)*.001,1e-6)
         actual_train_ids={r['job_id'] for r in train}
         metrics={'train_samples':len(train),'test_samples':len(test),'train_jobs':sorted(actual_train_ids),'excluded_train_jobs':sorted(train_ids-actual_train_ids),'test_jobs':[j[1] for j in jobs[split:]],'tp':0,'tn':0,'fp':0,'fn':0,'unlabeled':0}
         for r in test:
             predicted=abs(r['value']-mean)>threshold
             if r['result_label'] not in {'normal','defect'}:metrics['unlabeled']+=1;continue
             actual=r['result_label']=='defect';metrics['tp' if actual and predicted else 'fn' if actual else 'fp' if predicted else 'tn']+=1
-        params={'dataset':dataset,'signal_id':signal_id,'asset_code':asset,'mean':mean,'std':std,'threshold':threshold,'unit':next(iter(units)),'method':'normal baseline ± max(3σ, 0.1% of mean, 1e-6)','split':'chronological by job; labels excluded from input'}
+        params={'dataset':dataset,'signal_id':signal_id,'asset_code':asset,'sigma_factor':sigma_factor,'mean':mean,'std':std,'threshold':threshold,'unit':next(iter(units)),'method':'normal baseline ± max(kσ, 0.1% of mean, 1e-6)','split':'chronological by job; labels excluded from input'}
         with self.connect() as db:db.execute('INSERT INTO models(created_utc,feature,parameters,metrics) VALUES(?,?,?,?)',(now(),f'{dataset}:{signal_id}',json.dumps(params),json.dumps(metrics)))
         return {'parameters':params,'metrics':metrics}
 
