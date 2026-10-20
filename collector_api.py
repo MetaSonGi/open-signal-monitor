@@ -52,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             url=urlsplit(self.path)
-            static={'/':'index.html','/index.html':'index.html','/dashboard.js':'dashboard.js','/style.css':'style.css'}
+            static={'/':'index.html','/index.html':'index.html','/dashboard.js':'dashboard.js','/style.css':'style.css','/factory_math.js':'factory_math.js','/factory_ui.js':'factory_ui.js'}
             if url.path in static:
                 file=Path(__file__).parent/'docs'/static[url.path]
                 raw=file.read_bytes();mime={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8'}[file.suffix[1:]]
