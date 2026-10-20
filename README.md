@@ -1,56 +1,136 @@
 # OpenSignal Monitor
 
-공개된 Modbus TCP 규격으로 장치의 레지스터를 읽고, SQLite DB에 기록하는 Windows 데스크톱 프로그램입니다. 한국어 화면, 실시간 그래프, CSV 내보내기, 가상 Modbus 장치를 제공합니다.
+Modbus TCP·OPC UA·로봇 브리지·아두이노 센서를 연결해 수집하고, 생산 LOT와 판정 라벨을 관리하는 로컬 제조 데이터 운영 프로그램입니다. 실시간 표·그래프, 품질 검사, SQLite 기록, CSV·Parquet 데이터 내보내기를 제공합니다.
 
 ## 실행
 
-Python 3.10 이상(tkinter 포함)이 필요합니다. 별도 패키지 설치는 없습니다.
+Windows와 Python 3.11 이상(tkinter 포함)을 권장합니다. Python 3.14에서 검증했습니다.
 
-1. 압축을 풀고 `Start.cmd`를 실행합니다.
-2. **시뮬레이터로 시작**을 누르면 가상 장치가 실행되고 수집이 시작됩니다.
-3. 실시간 탭에서 원시값·변환값·그래프를 확인합니다.
-4. 수집 중지 후 저장 기록을 조회하거나 **전체 기록 CSV 저장**을 누릅니다.
+1. 저장소를 내려받거나 압축을 풉니다.
+2. `Install.cmd`로 연결·Parquet 패키지를 설치합니다. 인터넷 연결이 필요합니다.
+3. `Start.cmd`를 실행합니다.
+4. **가상 공장 추가 → 전체 수집 시작**으로 가상 PLC·로봇·아두이노 3개 설비의 센서 6개를 확인합니다.
+5. **실시간** 탭에서 센서를 선택하면 최근 120회 추이를 표시합니다.
 
-명령으로 실행하려면 프로젝트 폴더에서 `python app.py`를 사용합니다.
+직접 실행하려면:
 
-## 실제 장치 연결
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe operations_app.py
+```
 
-장치 주소, TCP 포트(일반적으로 502), 장치 번호, 기능 03/04, 시작 주소, 개수를 장치의 공개 매뉴얼에 맞게 입력하고 **장치 수집 시작**을 누릅니다. 자동으로 네트워크의 장치를 검색하거나 외부 장치에 접속하지 않습니다.
+가상 장비·Modbus TCP·로봇 TCP JSON은 표준 라이브러리만으로 실행됩니다. OPC UA는 asyncua, 시리얼은 pyserial, Parquet는 duckdb가 필요합니다.
 
-- 주소는 전송 프레임 기준 **0부터**입니다. 예를 들어 40001 표기와 주소 0의 관계는 장치 매뉴얼에서 확인합니다.
-- 기능 03: Holding Registers, 기능 04: Input Registers. 쓰기 기능은 없습니다.
-- 개수: 1~125개, 수집 간격: 0.2~3600초.
-- 값: UInt16 또는 Int16에 배율을 곱합니다. 예: 원시값 1234 × 0.1 = 123.4.
-- 32비트 float, 여러 레지스터 조합, 제조사별 워드 순서는 현재 지원하지 않습니다.
-- 요청마다 새 TCP 연결을 사용하며 통신 오류 시 다음 수집 주기에 재시도합니다. 장치가 이런 접속 방식을 허용하는지 확인합니다.
-- 시뮬레이터는 127.0.0.1의 빈 포트에서만 실행하며 주소 0~127에 가상 사인파 값을 제공합니다. 실제 설비 데이터가 아닙니다.
-- 이 프로그램은 Modbus TCP용이며 RTU/RS-485/시리얼·OPC UA는 포함하지 않습니다. 인증·TLS를 제공하지 않는 일반 Modbus TCP를 구현합니다.
+## 연결·센서 관리
+
+**연결 추가**에서 설비 코드·이름·위치·연결 방식을 등록하고, 연결을 선택해 **센서 추가**에서 측정 항목·단위·보정·허용 범위·데이터 유효시간을 설정합니다. 같은 설비 코드에 여러 연결을 둘 수 있습니다.
+
+수정하려면 수집을 모두 중지합니다. 선택 또는 전체 연결을 시작/중지할 수 있고, 통신 실패 시 해당 연결만 재접속합니다. 장치 검색·쓰기·운전 명령은 보내지 않습니다.
+
+|연결|설정|센서 주소·항목 예시|
+|---|---|---|
+|Modbus TCP|IP·포트·Unit ID·FC03/04|`0`, `2:i16`, `4:f32`, `4:f32:swap`|
+|OPC UA|`opc.tcp://host:4840/...`|`ns=2;s=Temperature`|
+|아두이노 / 시리얼 JSON|`COM3`·115200 baud|`adc`, `voltage`|
+|로봇 / TCP JSON 브리지|브리지 IP·포트|`joint1`, `current`, `running`|
+|가상 장비|설정 불필요|임의 이름|
+
+Modbus 주소는 **0부터 시작하는 전송 주소**입니다. 자료형은 u16/i16/u32/i32/f32이고 `:swap`은 32비트의 두 워드를 바꿉니다. 워드 내 바이트는 big-endian입니다. 센서별로 요청하므로 센서 수에 맞게 주기를 늘려야 합니다. RTU/RS-485 Modbus는 지원하지 않습니다.
+
+### OPC UA 인증
+
+OPC 노드의 값·상태 코드·SourceTimestamp를 읽습니다. 보안 설정은 asyncua의 `Policy,Mode,certificate,private_key[,server_certificate]` 형식입니다. 예: `Basic256Sha256,SignAndEncrypt,client.der,client-key.pem`.
+
+인증이 필요하면 화면에는 사용자명·비밀번호 자체 대신 **환경변수 이름**을 넣고 프로그램 시작 전에 운영 환경에 값을 설정합니다. 주소에 비밀번호를 넣지 않습니다. 서버/클라이언트 인증서 신뢰 설정은 서버 정책에 맞춰 구성해야 합니다. 통합 시험은 익명·NoSecurity 로컬 서버로 수행했으며 인증서 기반 실장비 서버는 검증하지 않았습니다.
+
+### 로봇·아두이노 메시지
+
+로봇 제조사 공통 소켓 규약은 없습니다. Modbus/OPC UA 제공 장치는 해당 연결을 사용하고, 다른 API는 별도 브리지에서 다음 형식으로 변환해야 합니다. **TCP JSON은 특정 제조사 드라이버가 아닙니다.**
+
+시리얼·브리지는 UTF-8 JSON 하나를 한 줄에 보내며 줄바꿈으로 끝냅니다.
+
+```json
+{"timestamp":"2026-10-20T10:00:00+09:00","values":{"temperature":23.5,"current":2.1,"running":true}}
+```
+
+센서별 `{"value":23.5,"quality":"good","timestamp":"2026-10-20T01:00:00Z"}` 형태도 지원합니다. 시각 생략 시 수집 시각을 사용합니다. 숫자·불리언만 센서값으로 처리하며 프레임은 최대 64 KiB입니다.
+
+- [아두이노 예제](examples/arduino_sensors.ino): A0 ADC·전압을 보냅니다. 5V·10비트 ADC 보드 예시이므로 실제 보드에 맞춰 조정하세요. 실물 보드 컴파일·업로드는 검증하지 않았습니다.
+- [가상 로봇 브리지](examples/robot_bridge_demo.py): `python examples/robot_bridge_demo.py` 실행 후 127.0.0.1:15030에 연결하고 joint1/current/running을 등록합니다.
+
+## 생산 이력·판정
+
+**생산 이력**에서 설비별 작업지시·제품·LOT·공정·운전 상태를 등록하고 작업을 시작/종료합니다. 설비당 활성 작업은 하나입니다. 장치 시각이 속하는 생산 구간에 측정값을 연결합니다. 이미 저장된 측정값에 나중에 생성한 생산 작업을 소급 연결하지 않습니다.
+
+**정상·불량 판정**에서 구간별 normal/defect/failure/maintenance와 고장 종류·판정 근거 메모를 등록합니다. 라벨은 내보내는 시점에 결합하므로 수집 후 추가할 수 있습니다. 라벨이 없으면 정상으로 추정하지 않습니다. 겹치는 판정은 모두 보존하고 서로 다른 종류가 있으면 label_conflict=1로 표시합니다. 라벨의 시작·종료 시각은 모두 포함합니다.
+
+## 품질·보정
+
+변환값은 `원시값 × 배율 + 보정값`입니다. 당시 원시값·단위·배율·보정값·주소·이름과 수집 설정을 보존합니다. 설정을 변경해도 과거 값에 새 보정을 덮어쓰지 않습니다.
+
+|품질|의미|
+|---|---|
+|good|유효한 숫자이며 상태·시각·범위 검사 통과|
+|missing|응답 실패 또는 항목 누락; 값은 NULL|
+|invalid|숫자가 아니거나 NaN/무한대 등 처리 불가|
+|invalid_time|시각/시간대 오류 또는 PC보다 5초 넘게 미래|
+|stale|장치 시각이 설정한 유효시간보다 오래됨|
+|out_of_order|같은 센서의 시각이 중복 또는 역순|
+|out_of_range|변환값이 허용 범위 밖|
+|device_bad|OPC UA가 정상 이외의 상태 보고|
+
+누락을 0으로 바꾸지 않습니다. 품질이 나쁜 데이터도 원본 내보내기에 남고 그래프는 해당 구간의 선을 연결하지 않습니다. 데이터 유효성과 제품 정상/불량 라벨은 별개입니다. 장치 시각이 없으면 실제 측정 지연을 판별할 수 없습니다. 장비·PC 시계 동기화가 필요합니다.
 
 ## DB 구조
 
-`data/monitor.sqlite3`는 첫 실행 시 생성됩니다.
+운영 DB: `data/manufacturing.sqlite3`. SQLite WAL과 연결별 수집 스레드로 기록합니다. [전체 스키마](manufacturing_schema.sql).
 
-|테이블|역할|
+|테이블|내용|
 |---|---|
-|schema_meta|DB 버전|
-|devices|수집 시점의 장치 이름·주소·포트·장치 번호|
-|sessions|수집 시작·종료, 기능·주소 범위·간격·배율·부호 설정|
-|channels|수집 세션별 레지스터 채널|
-|readings|UTC 시각, UInt16 원시값, 변환값, 응답 시간|
-|events|통신·기록 오류|
+|assets|설비 코드·이름·위치·종류|
+|sources|프로토콜 연결·수집 주기|
+|signals|센서 주소·단위·보정·허용 범위|
+|acquisition_runs|수집 시작·종료·설정 스냅샷|
+|telemetry|장치/수집 UTC 시각·원시/변환값·품질·응답 시간·생산 작업|
+|production_runs|작업지시·제품·LOT·공정·운전 상태·구간|
+|labels|정상·불량·고장·정비 구간과 메모|
+|incidents|연결 오류|
 
-매 수집 시작마다 장치 설정 스냅샷과 세션을 새로 기록합니다. 성공한 응답만 readings에 저장하며, 실패를 0값으로 저장하지 않습니다. DB 저장과 세션 종료 기록에 실패하면 통신 로그에 표시합니다. 저장 기록 화면은 최근 1,000개만 표시하고 CSV는 모든 세션의 전체 측정값을 내보냅니다. 기록 자동 삭제 정책은 없으므로 장기 수집 시 용량을 관리해야 합니다. 실행 중 강제 종료되면 sessions의 종료 시각이 비어 있을 수 있습니다.
+같은 DB에는 운영 화면 하나만 실행합니다. 비정상 종료 수집 세션은 재시작 시 interrupted로 표시합니다. 생산 작업은 자동 종료하지 않으므로 실제 상태와 대조해 종료하세요. 자동 데이터 삭제는 없습니다.
 
-## 프로토콜 참고 자료
+기존 단일 Modbus 화면은 `python app.py`, 기존 DB는 `data/monitor.sqlite3`로 유지됩니다. 기존 기록을 자동 이관하거나 과거에 없던 LOT·품질 정보를 만들어 채우지 않습니다.
 
-- [Modbus Organization 공식 규격 목록](https://www.modbus.org/modbus-specifications)
-- [Application Protocol V1.1b3](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf): FC03/04, 주소와 개수, 정상/예외 응답 형식.
-- [Messaging on TCP/IP Implementation Guide](https://www.modbus.org/file/secure/messagingimplementationguide.pdf): MBAP 헤더 및 TCP 메시징.
+## AI 데이터 내보내기
 
-공식 규격 문서 자체는 저장소에 재배포하지 않습니다. Modbus 인증 제품으로 주장하지 않습니다. 테스트는 소프트웨어 시뮬레이터와 독립된 응답 벡터를 사용했으며 실제 산업 장비와의 호환성을 보증하지 않습니다.
+**AI 데이터** 탭에서 시간대가 포함된 ISO 8601 시작·종료 시각을 지정합니다. 비우면 전체 범위입니다.
 
-자동 생성되는 `data/`, CSV, 실제 장치 설정/로그는 Git 추적에서 제외합니다.
+- **원본 CSV/Parquet:** 센서별 long format. 시각·주소·수집 run_id·원시/변환값·품질·보정·LOT·제품·공정·판정 ID/메모를 포함합니다.
+- **특징 집계:** 센서·수집 세션·생산 작업·시간 구간별 표본 수, good 표본 수, 평균·최소·최대·제곱평균·모집단 표준편차·RMS·품질 불량 비율. 수치 통계에는 good 값만 사용하고 good 값이 없으면 통계를 비웁니다.
+- **일별 Parquet:** `source_id=연결ID/date=YYYY-MM-DD/`로 나눕니다. 같은 폴더·종류로 다시 저장하면 파일을 대체하며 SQLite 원본은 삭제하지 않습니다.
+- 각 파일의 `.manifest.json`에 조건·행 수·품질/라벨 규칙을 기록합니다. 수치 열은 Parquet에서 숫자형으로 저장합니다.
 
-## 검증
+Parquet 생성에는 임시 CSV 디스크 공간도 필요합니다. invalid_fraction은 실제 기록한 시도 대비 비율이며 이론적인 수집 주기 대비 누락률이 아닙니다. 특징 구간은 UTC epoch 기준 고정 구간이고 통계에는 부동소수점 오차가 있을 수 있습니다.
 
-프로젝트 폴더에서 `python -m unittest -v`를 실행합니다. 분할된 TCP 수신, 알려진 프레임 값, 예외 응답, 잘못된 트랜잭션, 응답 중단, 범위 검증, 시뮬레이터 FC03/04, DB 기록·관계·CSV를 검사합니다.
+학습·평가 데이터는 시간 또는 LOT 단위로 나누세요. target_labels/label_ids/label_notes/label_conflict를 입력 특징에서 제외해 정답 유출을 방지하고 복수 판정 구간은 학습 목적에 맞게 정리해야 합니다. **수집·학습 데이터 준비 도구이며 AI 모델 학습이나 고장 예측 결과는 제공하지 않습니다.**
+
+## 운영 범위와 검증
+
+단일 PC의 수집·실험·파일럿용입니다. 무제한 저장·고가용성·다중 서버 빅데이터 플랫폼은 아닙니다. 규모가 커지면 날짜별 Parquet를 분석 저장소로 옮기고 서버 DB·메시지 큐·보관 정책을 구성해야 합니다. 사용자별 권한·알림 발송·DB 암호화·자동 보관 정책은 포함하지 않습니다.
+
+화면 부하가 높으면 일부 실시간 표시를 생략할 수 있지만 DB 기록은 생략하지 않습니다. 저장 실패는 로그로 표시하고 해당 수집 연결을 중지합니다. 장비별 레지스터·NodeId·센서 키는 장비 문서에 맞춰 등록해야 합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest -v
+```
+
+Modbus 프레임, 로컬 OPC UA 서버, 분할 TCP JSON, pySerial loopback, 다중 연결, 품질·보정·시각, LOT·라벨, 특징·빈 데이터·일별 Parquet를 검사합니다. 실제 산업 장비와 장시간 부하 시험은 별도입니다.
+
+## 참고 문서
+
+- [Modbus 공식 규격](https://www.modbus.org/modbus-specifications)
+- [asyncua](https://github.com/FreeOpcUa/opcua-asyncio)
+- [pySerial](https://pyserial.readthedocs.io/en/latest/pyserial_api.html)
+- [DuckDB Parquet](https://duckdb.org/docs/current/data/parquet/overview)
+
+라이브러리는 requirements.txt로 설치하며 바이너리를 저장소에 포함하지 않습니다. 라이선스는 각 프로젝트 문서를 따릅니다. 실제 데이터·설정·인증서·키·가상환경은 Git에서 제외하세요.
