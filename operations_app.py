@@ -38,6 +38,7 @@ class OperationsApp(tk.Tk):
         self.instance_lock=InstanceLock(db_path.with_suffix('.lock'))
         self.db=OperationsDB(db_path)
         self.messages=queue.Queue(maxsize=500);self.controls=queue.SimpleQueue();self.engine=Engine(self.db,self.notify);self.latest={};self.log_lines=[];self.traces={}
+        self.api=None
         style=ttk.Style(self);style.theme_use('clam')
         style.configure('TLabel',font=('맑은 고딕',10));style.configure('TButton',font=('맑은 고딕',10),padding=7)
         style.configure('Treeview',rowheight=27,font=('맑은 고딕',10))
@@ -47,6 +48,7 @@ class OperationsApp(tk.Tk):
         bar=ttk.Frame(root);bar.pack(fill='x',pady=(0,10))
         for title,command in [('가상 공장 추가',self.demo),('전체 수집 시작',self.start_all),('전체 중지',lambda:self.engine.stop())]:
             ttk.Button(bar,text=title,command=command).pack(side='left',padx=(0,8))
+        ttk.Button(bar,text='학습 앱 연결 API',command=self.start_api).pack(side='left',padx=4)
         self.status=tk.StringVar(value='설비를 등록하거나 가상 공장을 추가하세요.')
         ttk.Label(bar,textvariable=self.status).pack(side='right')
         tabs=ttk.Notebook(root);tabs.pack(fill='both',expand=True)
@@ -101,6 +103,15 @@ class OperationsApp(tk.Tk):
             self.controls.put((kind,data));return
         try:self.messages.put_nowait((kind,data))
         except queue.Full:pass  # UI notifications may be coalesced; DB writes are never dropped.
+
+    def start_api(self):
+        if self.api:
+            messagebox.showinfo('학습 연결','연결 주소: http://127.0.0.1:8808');return
+        try:
+            from collector_api import start_api
+            self.api=start_api(self.db.path)
+            messagebox.showinfo('학습 연결','읽기 전용 연결 시작\nhttp://127.0.0.1:8808\n별도 학습 앱에서 이 주소로 연결하세요.')
+        except OSError as e:messagebox.showerror('연결 API',str(e))
 
     def selected_source(self):
         selection=self.sources.selection()
@@ -322,7 +333,10 @@ class OperationsApp(tk.Tk):
         self.engine.stop();self.withdraw()
         def finish():
             if self.engine.active():self.after(100,finish)
-            else:self.closing=True;self.instance_lock.close();self.destroy()
+            else:
+                self.closing=True
+                if self.api:self.api.shutdown();self.api.server_close()
+                self.instance_lock.close();self.destroy()
         finish()
 
 

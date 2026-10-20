@@ -2,6 +2,19 @@
 
 Modbus TCP·OPC UA·로봇 브리지·아두이노 센서를 연결해 수집하고, 생산 LOT와 판정 라벨을 관리하는 로컬 제조 데이터 운영 프로그램입니다. 실시간 표·그래프, 품질 검사, SQLite 기록, CSV·Parquet 데이터 내보내기를 제공합니다.
 
+## MES·POP와 연결하는 제조 AI 실습
+
+수집기를 유지하면서 **별도 MES, POP, Learning Studio**를 실행할 수 있습니다. 블록을 드래그해 공장을 배치하고 연결선을 만들고, 수집 설비를 MES 설비에 매핑해 작업·LOT·판정이 붙은 학습 데이터를 만듭니다.
+
+1. `Start.cmd`: 수집기에서 수집을 시작하고 **학습 앱 연결 API**를 누릅니다.
+2. `StartLearning.cmd`: 배치·연결·장치 매핑·AI 실습 화면입니다.
+3. `StartMES.cmd`: 설비·품목·작업지시·LOT·검사 판정을 관리합니다.
+4. `StartPOP.cmd`: 작업지시 조회·작업 시작/정지/재개·실적·완료를 입력합니다.
+
+빠른 체험은 Learning Studio의 **예제 실습 데이터 → 제조 AI 실습 → 정상 기준선 학습·평가**입니다. 실제 수집과 구분한 가상 LOT 5개·센서 150개를 사용합니다. [실습 교안과 연결 방법](learning/README.md).
+
+MES·POP는 `data/learning.sqlite3`를 공유하고, 수집기의 `data/manufacturing.sqlite3`에는 쓰지 않습니다. 같은 PC에서 앱 간 역할을 나누는 학습 버전이며, 다중 사용자용 MES 서버나 로봇 제어 시스템은 아닙니다.
+
 ## 실행
 
 Windows와 Python 3.11 이상(tkinter 포함)을 권장합니다. Python 3.14에서 검증했습니다.
