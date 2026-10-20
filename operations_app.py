@@ -48,7 +48,7 @@ class OperationsApp(tk.Tk):
         bar=ttk.Frame(root);bar.pack(fill='x',pady=(0,10))
         for title,command in [('가상 공장 추가',self.demo),('전체 수집 시작',self.start_all),('전체 중지',lambda:self.engine.stop())]:
             ttk.Button(bar,text=title,command=command).pack(side='left',padx=(0,8))
-        ttk.Button(bar,text='학습 앱 연결 API',command=self.start_api).pack(side='left',padx=4)
+        ttk.Button(bar,text='웹 모니터 · 학습 연결',command=self.start_api).pack(side='left',padx=4)
         self.status=tk.StringVar(value='설비를 등록하거나 가상 공장을 추가하세요.')
         ttk.Label(bar,textvariable=self.status).pack(side='right')
         tabs=ttk.Notebook(root);tabs.pack(fill='both',expand=True)
@@ -110,7 +110,7 @@ class OperationsApp(tk.Tk):
         try:
             from collector_api import start_api
             self.api=start_api(self.db.path)
-            messagebox.showinfo('학습 연결','읽기 전용 연결 시작\nhttp://127.0.0.1:8808\n별도 학습 앱에서 이 주소로 연결하세요.')
+            messagebox.showinfo('학습 연결','읽기 전용 연결 시작\nhttp://127.0.0.1:8808\n브라우저에서 이 주소를 열면 웹 모니터가 표시됩니다. 별도 학습 앱도 연결할 수 있습니다.')
         except OSError as e:messagebox.showerror('연결 API',str(e))
 
     def selected_source(self):

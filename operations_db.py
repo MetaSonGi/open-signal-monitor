@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS telemetry(
  latency_ms REAL NOT NULL, unit TEXT NOT NULL, scale REAL NOT NULL, offset REAL NOT NULL,
  signal_key TEXT NOT NULL, signal_name TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS telemetry_signal_time ON telemetry(signal_id,source_utc);
+CREATE INDEX IF NOT EXISTS telemetry_signal_id ON telemetry(signal_id,id);
 CREATE INDEX IF NOT EXISTS telemetry_ingest ON telemetry(ingested_utc);
 CREATE INDEX IF NOT EXISTS telemetry_production ON telemetry(production_id);
 CREATE TABLE IF NOT EXISTS labels(

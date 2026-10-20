@@ -1,5 +1,6 @@
 """Loopback, read-only bridge. Never constructs OperationsDB or alters sessions."""
 import argparse
+import os
 import hashlib
 import json
 import sqlite3
@@ -11,10 +12,14 @@ from urllib.parse import urlsplit,parse_qs
 
 class CollectorAPI(ThreadingHTTPServer):
     daemon_threads=True
-    def __init__(self,path,port=8808):
+    def __init__(self,path,port=8808,learning_path=None):
         self.database=Path(path).resolve()
+        self.learning_database=Path(learning_path or os.environ.get('OPENSIGNAL_LEARNING_DB') or self.database.parent/'learning.sqlite3').resolve()
         super().__init__(('127.0.0.1',port),Handler)
     def read(self,path,query):
+        if path=='/v1/web':
+            from web_snapshot import snapshot
+            return snapshot(self.database,self.learning_database)
         db=sqlite3.connect(self.database.as_uri()+'?mode=ro',uri=True,timeout=3)
         db.row_factory=sqlite3.Row
         try:
@@ -33,6 +38,11 @@ class CollectorAPI(ThreadingHTTPServer):
                     JOIN sources so ON so.id=s.source_id JOIN assets a ON a.id=so.asset_id
                     WHERE t.id>? ORDER BY t.id LIMIT ?''',(after,limit))]
                 return {'dataset_id':dataset,'samples':rows,'next_id':rows[-1]['id'] if rows else after}
+            if path=='/v1/history':
+                signal=int(query.get('signal_id',['0'])[0]);limit=int(query.get('limit',['120'])[0])
+                if signal<=0 or not 1<=limit<=500:raise ValueError('signal_id > 0, limit 1..500')
+                rows=[dict(r) for r in db.execute('SELECT value,quality,source_utc,ingested_utc FROM telemetry WHERE signal_id=? ORDER BY id DESC LIMIT ?',(signal,limit))]
+                return {'samples':rows[::-1]}
             return None
         finally:db.close()
 
@@ -41,7 +51,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args):pass
     def do_GET(self):
         try:
-            url=urlsplit(self.path);result=self.server.read(url.path,parse_qs(url.query))
+            url=urlsplit(self.path)
+            static={'/':'index.html','/index.html':'index.html','/dashboard.js':'dashboard.js','/style.css':'style.css'}
+            if url.path in static:
+                file=Path(__file__).parent/'docs'/static[url.path]
+                raw=file.read_bytes();mime={'html':'text/html; charset=utf-8','js':'text/javascript; charset=utf-8','css':'text/css; charset=utf-8'}[file.suffix[1:]]
+                self.send_response(200);self.send_header('Content-Type',mime);self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+            result=self.server.read(url.path,parse_qs(url.query))
             self.respond(404 if result is None else 200,result or {'error':'unknown endpoint'})
         except (sqlite3.Error,OSError):self.respond(503,{'error':'수집 DB를 사용할 수 없습니다. 수집기를 먼저 실행하세요.'})
         except ValueError as e:self.respond(400,{'error':str(e)})

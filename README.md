@@ -147,3 +147,11 @@ Modbus 프레임, 로컬 OPC UA 서버, 분할 TCP JSON, pySerial loopback, 다�
 - [DuckDB Parquet](https://duckdb.org/docs/current/data/parquet/overview)
 
 라이브러리는 requirements.txt로 설치하며 바이너리를 저장소에 포함하지 않습니다. 라이선스는 각 프로젝트 문서를 따릅니다. 실제 데이터·설정·인증서·키·가상환경은 Git에서 제외하세요.
+
+## 웹 모니터링
+
+- [브라우저 예제 화면](https://metasongi.github.io/open-signal-monitor/): 설치 없이 합성 센서 트렌드·MES/POP·학습 예시를 조회합니다.
+- 실제 데이터: 수집기에서 **웹 모니터 · 학습 연결**을 누르고 같은 PC의 브라우저로 <http://127.0.0.1:8808/>를 여세요.
+- 센서 최근 120개 기록, 최신 측정값·품질·수신 상태, MES 작업과 POP 실적, 저장된 학습 평가를 3초마다 조회합니다.
+- 웹은 읽기 전용입니다. 설비 설정·배치·학습·실적 입력은 각 데스크톱 앱에서 실행합니다. MES/POP는 별도 learning.sqlite3를 읽으며 OPENSIGNAL_LEARNING_DB 환경변수로 경로를 지정할 수 있습니다.
+- 공개 웹에는 예제만 표시하며 실제 DB를 업로드하지 않습니다. 실제 연결은 이 PC에서만 접근하는 로컬 서버입니다. 다른 PC·휴대폰 원격 접속은 현재 제공하지 않습니다.
