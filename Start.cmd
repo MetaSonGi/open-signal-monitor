@@ -1,14 +1,14 @@
 @echo off
 cd /d "%~dp0"
 if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" operations_app.py
+    ".venv\Scripts\python.exe" launch.py collector
     goto finish
 )
 where py >nul 2>nul
 if not errorlevel 1 (
-    py -3 operations_app.py
+    py -3 launch.py collector
 ) else (
-    python operations_app.py
+    python launch.py collector
 )
 :finish
 if errorlevel 1 (
